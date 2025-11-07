@@ -19,11 +19,11 @@ _drive_instance = None
 
 def get_drive():
     """
-    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证（完全兼容 PyDrive2）
+    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证（最终稳定版）
     """
     import os
     import json
-    from pydrive2.auth import GoogleAuth, ServiceAccountCredentials
+    from pydrive2.auth import GoogleAuth
     from pydrive2.drive import GoogleDrive
 
     global _drive_instance
@@ -31,7 +31,7 @@ def get_drive():
         return _drive_instance
 
     try:
-        # === Step 1️⃣ 准备凭据文件 ===
+        # === Step 1️⃣ 写入凭据到临时文件 ===
         sa_path = "temp_service_account.json"
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
@@ -42,18 +42,27 @@ def get_drive():
         else:
             raise FileNotFoundError("No service_account.json or st.secrets['gcp_service_account'] found.")
 
-        # === Step 2️⃣ 构建 GoogleAuth 并加载 service account 凭据 ===
+        # === Step 2️⃣ 构建 GoogleAuth 对象 ===
         gauth = GoogleAuth()
-        gauth.auth_method = 'service'
-        gauth.settings['client_config_backend'] = 'service'
-        gauth.settings['service_config'] = {
-            "client_json_file_path": sa_path
+        gauth.settings["client_config_backend"] = "service"
+        gauth.settings["service_config"] = {
+            # ✅ 以下字段全部必需
+            "client_json_file_path": sa_path,
+            "client_service_email": None,
+            "client_user_email": None,     # 🔥 必填，否则会报 Missing: client_user_email
+            "client_pkcs12_file_path": None,
+            "client_pkcs12_password": None,
+            "oauth_scope": [
+                "https://www.googleapis.com/auth/drive",
+                "https://www.googleapis.com/auth/drive.file",
+                "https://www.googleapis.com/auth/drive.metadata",
+            ],
         }
 
-        # 使用 ServiceAuth() 登录
+        # === Step 3️⃣ 登录 Google Drive（Service Account 模式） ===
         gauth.ServiceAuth()
 
-        # === Step 3️⃣ 构建 GoogleDrive 客户端 ===
+        # === Step 4️⃣ 构建 Drive 实例 ===
         drive = GoogleDrive(gauth)
         _drive_instance = drive
 
