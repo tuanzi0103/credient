@@ -19,11 +19,11 @@ _drive_instance = None
 
 def get_drive():
     """
-    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证（适配新版 PyDrive2）
+    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证（最新版 PyDrive2）
     """
     import os
     import json
-    from pydrive2.auth import GoogleAuth, ServiceAccountCredentials
+    from pydrive2.auth import ServiceAccountCredentials
     from pydrive2.drive import GoogleDrive
 
     global _drive_instance
@@ -31,7 +31,7 @@ def get_drive():
         return _drive_instance
 
     try:
-        # === 1️⃣ 生成 service account 文件 ===
+        # === Step 1️⃣ 准备 service account 凭据 ===
         sa_path = "temp_service_account.json"
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
@@ -42,7 +42,7 @@ def get_drive():
         else:
             raise FileNotFoundError("No service_account.json or st.secrets['gcp_service_account'] found.")
 
-        # === 2️⃣ 构建 ServiceAccountCredentials ===
+        # === Step 2️⃣ 创建凭据对象 ===
         scopes = [
             "https://www.googleapis.com/auth/drive",
             "https://www.googleapis.com/auth/drive.file",
@@ -50,22 +50,10 @@ def get_drive():
         ]
         creds = ServiceAccountCredentials.from_json_keyfile_name(sa_path, scopes)
 
-        # === 3️⃣ 使用 PyDrive2 的 GoogleAuth ===
-        gauth = GoogleAuth()
-        gauth.auth_method = "service"
-        gauth.service_config = {
-            "client_service_email": creds.service_account_email,
-            "client_user_email": None,
-            "client_pkcs12_file_path": None,
-            "client_json_file_path": sa_path,
-            "oauth_scope": scopes,
-        }
-        gauth.ServiceAuth()
+        # === Step 3️⃣ 直接用凭据构建 GoogleDrive 对象 ===
+        drive = GoogleDrive(creds)
 
-        # === 4️⃣ 构建 GoogleDrive 客户端 ===
-        drive = GoogleDrive(gauth)
         _drive_instance = drive
-
         st.sidebar.success("✅ Authenticated successfully via service account")
         print("✅ Authenticated successfully via service account")
         return drive
