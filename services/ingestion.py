@@ -19,11 +19,11 @@ _drive_instance = None
 
 def get_drive():
     """
-    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证（最新版 PyDrive2）
+    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证（完全兼容 PyDrive2）
     """
     import os
     import json
-    from pydrive2.auth import ServiceAccountCredentials
+    from pydrive2.auth import GoogleAuth, ServiceAccountCredentials
     from pydrive2.drive import GoogleDrive
 
     global _drive_instance
@@ -31,7 +31,7 @@ def get_drive():
         return _drive_instance
 
     try:
-        # === Step 1️⃣ 准备 service account 凭据 ===
+        # === Step 1️⃣ 准备凭据文件 ===
         sa_path = "temp_service_account.json"
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
@@ -42,18 +42,21 @@ def get_drive():
         else:
             raise FileNotFoundError("No service_account.json or st.secrets['gcp_service_account'] found.")
 
-        # === Step 2️⃣ 创建凭据对象 ===
-        scopes = [
-            "https://www.googleapis.com/auth/drive",
-            "https://www.googleapis.com/auth/drive.file",
-            "https://www.googleapis.com/auth/drive.metadata"
-        ]
-        creds = ServiceAccountCredentials.from_json_keyfile_name(sa_path, scopes)
+        # === Step 2️⃣ 构建 GoogleAuth 并加载 service account 凭据 ===
+        gauth = GoogleAuth()
+        gauth.auth_method = 'service'
+        gauth.settings['client_config_backend'] = 'service'
+        gauth.settings['service_config'] = {
+            "client_json_file_path": sa_path
+        }
 
-        # === Step 3️⃣ 直接用凭据构建 GoogleDrive 对象 ===
-        drive = GoogleDrive(creds)
+        # 使用 ServiceAuth() 登录
+        gauth.ServiceAuth()
 
+        # === Step 3️⃣ 构建 GoogleDrive 客户端 ===
+        drive = GoogleDrive(gauth)
         _drive_instance = drive
+
         st.sidebar.success("✅ Authenticated successfully via service account")
         print("✅ Authenticated successfully via service account")
         return drive
