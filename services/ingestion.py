@@ -19,46 +19,61 @@ _drive_instance = None
 
 def get_drive():
     """
-    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证
-    （兼容新版 PyDrive2，不再直接传 ServiceAccountCredentials）
+    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证（适配新版 PyDrive2）
     """
     import os
+    import json
+    from pydrive2.auth import GoogleAuth, ServiceAccountCredentials
+    from pydrive2.drive import GoogleDrive
+
     global _drive_instance
     if _drive_instance is not None:
         return _drive_instance
 
     try:
-        # ✅ Step 1: 构建 GoogleAuth 对象
-        gauth = GoogleAuth()
-
-        # ✅ Step 2: 判断 secrets 是否存在
+        # === 1️⃣ 生成 service account 文件 ===
+        sa_path = "temp_service_account.json"
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
-            with open("temp_sa.json", "w") as f:
+            with open(sa_path, "w") as f:
                 json.dump(creds_dict, f)
-            gauth.LoadServiceConfigFile("temp_sa.json")
+        elif os.path.exists("service_account.json"):
+            sa_path = "service_account.json"
         else:
-            gauth.LoadServiceConfigFile("service_account.json")
+            raise FileNotFoundError("No service_account.json or st.secrets['gcp_service_account'] found.")
 
-        # ✅ Step 3: 设置 scope 并加载凭据
-        gauth.settings["client_config_backend"] = "service"
-        gauth.settings["oauth_scope"] = [
+        # === 2️⃣ 构建 ServiceAccountCredentials ===
+        scopes = [
             "https://www.googleapis.com/auth/drive",
             "https://www.googleapis.com/auth/drive.file",
             "https://www.googleapis.com/auth/drive.metadata"
         ]
+        creds = ServiceAccountCredentials.from_json_keyfile_name(sa_path, scopes)
+
+        # === 3️⃣ 使用 PyDrive2 的 GoogleAuth ===
+        gauth = GoogleAuth()
+        gauth.auth_method = "service"
+        gauth.service_config = {
+            "client_service_email": creds.service_account_email,
+            "client_user_email": None,
+            "client_pkcs12_file_path": None,
+            "client_json_file_path": sa_path,
+            "oauth_scope": scopes,
+        }
         gauth.ServiceAuth()
 
-        # ✅ Step 4: 构建 Drive 实例
+        # === 4️⃣ 构建 GoogleDrive 客户端 ===
         drive = GoogleDrive(gauth)
         _drive_instance = drive
-        st.sidebar.success("✅ Authenticated successfully with service account")
-        print("✅ Authenticated successfully with service account")
+
+        st.sidebar.success("✅ Authenticated successfully via service account")
+        print("✅ Authenticated successfully via service account")
         return drive
 
     except Exception as e:
         st.sidebar.error(f"❌ Failed to authenticate service account: {e}")
         raise
+
 
 
 def upload_file_to_drive(local_path: str, remote_name: str):
