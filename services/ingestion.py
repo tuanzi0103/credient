@@ -18,29 +18,49 @@ _drive_instance = None
 
 def get_drive():
     """
-    使用服务账号凭据登录 Google Drive，无需人工 OAuth。
+    使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证
     """
+    import json
+    import os
     global _drive_instance
     if _drive_instance is not None:
         return _drive_instance
 
     try:
-        creds = ServiceAccountCredentials.from_json_keyfile_name(
-            "service_account.json",
-            scopes=[
-                "https://www.googleapis.com/auth/drive",
-                "https://www.googleapis.com/auth/drive.file",
-                "https://www.googleapis.com/auth/drive.metadata"
-            ]
-        )
+        # ✅ 优先从 Streamlit Secrets 中读取
+        if "gcp_service_account" in st.secrets:
+            creds_dict = dict(st.secrets["gcp_service_account"])
+            creds = ServiceAccountCredentials.from_json_keyfile_dict(
+                creds_dict,
+                scopes=[
+                    "https://www.googleapis.com/auth/drive",
+                    "https://www.googleapis.com/auth/drive.file",
+                    "https://www.googleapis.com/auth/drive.metadata"
+                ]
+            )
+            st.sidebar.success("✅ Loaded service account from st.secrets")
+        else:
+            # ✅ 本地环境：从文件加载
+            creds_path = os.path.join(os.path.dirname(__file__), "..", "service_account.json")
+            creds = ServiceAccountCredentials.from_json_keyfile_name(
+                creds_path,
+                scopes=[
+                    "https://www.googleapis.com/auth/drive",
+                    "https://www.googleapis.com/auth/drive.file",
+                    "https://www.googleapis.com/auth/drive.metadata"
+                ]
+            )
+            st.sidebar.info("📁 Loaded service account from local JSON file")
+
+        from pydrive2.drive import GoogleDrive
         drive = GoogleDrive(creds)
         _drive_instance = drive
-        print("✅ Service account authenticated successfully via service_account.json")
+        print("✅ Service account authenticated successfully")
         return drive
+
     except Exception as e:
         st.sidebar.error(f"❌ Failed to authenticate service account: {e}")
         raise
-
 
 
 def upload_file_to_drive(local_path: str, remote_name: str):
