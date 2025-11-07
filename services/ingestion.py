@@ -9,8 +9,9 @@ import streamlit as st
 
 from services.db import get_db
 
-from pydrive2.auth import ServiceAccountCredentials
+from pydrive2.auth import GoogleAuth
 from pydrive2.drive import GoogleDrive
+import json
 
 FOLDER_ID = "1lZGE0DkgKyox1HbBzuhZ-oypDF478jBj"
 _drive_instance = None
@@ -19,43 +20,40 @@ _drive_instance = None
 def get_drive():
     """
     使用 service_account.json 或 st.secrets["gcp_service_account"] 自动认证
+    （兼容新版 PyDrive2，不再直接传 ServiceAccountCredentials）
     """
-    import json
     import os
     global _drive_instance
     if _drive_instance is not None:
         return _drive_instance
 
     try:
-        # ✅ 优先从 Streamlit Secrets 中读取
+        # ✅ Step 1: 构建 GoogleAuth 对象
+        gauth = GoogleAuth()
+
+        # ✅ Step 2: 判断 secrets 是否存在
         if "gcp_service_account" in st.secrets:
             creds_dict = dict(st.secrets["gcp_service_account"])
-            creds = ServiceAccountCredentials.from_json_keyfile_dict(
-                creds_dict,
-                scopes=[
-                    "https://www.googleapis.com/auth/drive",
-                    "https://www.googleapis.com/auth/drive.file",
-                    "https://www.googleapis.com/auth/drive.metadata"
-                ]
-            )
-            st.sidebar.success("✅ Loaded service account from st.secrets")
+            with open("temp_sa.json", "w") as f:
+                json.dump(creds_dict, f)
+            gauth.LoadServiceConfigFile("temp_sa.json")
         else:
-            # ✅ 本地环境：从文件加载
-            creds_path = os.path.join(os.path.dirname(__file__), "..", "service_account.json")
-            creds = ServiceAccountCredentials.from_json_keyfile_name(
-                creds_path,
-                scopes=[
-                    "https://www.googleapis.com/auth/drive",
-                    "https://www.googleapis.com/auth/drive.file",
-                    "https://www.googleapis.com/auth/drive.metadata"
-                ]
-            )
-            st.sidebar.info("📁 Loaded service account from local JSON file")
+            gauth.LoadServiceConfigFile("service_account.json")
 
-        from pydrive2.drive import GoogleDrive
-        drive = GoogleDrive(creds)
+        # ✅ Step 3: 设置 scope 并加载凭据
+        gauth.settings["client_config_backend"] = "service"
+        gauth.settings["oauth_scope"] = [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/drive.file",
+            "https://www.googleapis.com/auth/drive.metadata"
+        ]
+        gauth.ServiceAuth()
+
+        # ✅ Step 4: 构建 Drive 实例
+        drive = GoogleDrive(gauth)
         _drive_instance = drive
-        print("✅ Service account authenticated successfully")
+        st.sidebar.success("✅ Authenticated successfully with service account")
+        print("✅ Authenticated successfully with service account")
         return drive
 
     except Exception as e:
